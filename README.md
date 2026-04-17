@@ -100,16 +100,6 @@ OceanEye is the Google Maps for ocean plastic — detecting what’s invisible, 
 Satellite Data → Data Processing → AI Detection → Time-Series Analysis → Trajectory Prediction → Dashboard
 
 
-
-⚙️ How to Run the Project
-
-git clone https://github.com/your-username/oceaneye.git
-cd oceaneye
-npm install
-npm start
-
-
-
 📊 Datasets Used
 
 - MARIDA Dataset
