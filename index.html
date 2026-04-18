@@ -1,0 +1,3082 @@
+!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OceanEye | AI Marine Plastic Detection</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    :root {
+      --bg: #06192b;
+      --surface: #0f2340;
+      --surface-soft: #162f53;
+      --border: #1d3f6f;
+      --text: #e8f2ff;
+      --muted: #94a3b8;
+      --primary: #38bdf8;
+      --primary-dark: #0ea5e9;
+      --accent: #22c55e;
+      --danger: #f97316;
+      --warning: #fbbf24;
+      --shadow: rgba(5, 24, 54, 0.35);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: radial-gradient(circle at top left, rgba(56, 189, 248, 0.18), transparent 35%),
+                  linear-gradient(180deg, #06192b 0%, #071628 100%);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      scroll-behavior: smooth;
+    }
+
+    body {
+      line-height: 1.6;
+      overflow-x: hidden;
+      animation: pageLoad 1s ease-out;
+    }
+
+    @keyframes pageLoad {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    button, input, textarea {
+      font: inherit;
+    }
+
+    .container {
+      width: min(1200px, calc(100% - 2rem));
+      margin: 0 auto;
+    }
+
+    .header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 1000;
+      backdrop-filter: blur(20px);
+      background: rgba(6, 25, 43, 0.95);
+      border-bottom: 1px solid rgba(56, 189, 248, 0.2);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      transition: all 0.3s ease;
+    }
+
+    .header.scrolled {
+      background: rgba(6, 25, 43, 0.98);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+    }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 0;
+      position: relative;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--primary);
+      font-weight: 700;
+      font-size: 1.4rem;
+      text-decoration: none;
+      transition: transform 0.3s ease;
+      z-index: 1001;
+    }
+
+    .brand:hover {
+      transform: scale(1.05);
+    }
+
+    .brand-icon {
+      font-size: 1.8rem;
+      filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.5));
+    }
+
+    .brand-text {
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .main-nav {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      margin: 0 2rem;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 50px;
+      padding: 0.5rem;
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .nav-links li {
+      position: relative;
+    }
+
+    .nav-link {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1.25rem;
+      color: var(--muted);
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 0.9rem;
+      border-radius: 25px;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+
+    .nav-link::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(56, 189, 248, 0.2), transparent);
+      transition: left 0.5s ease;
+    }
+
+    .nav-link:hover::before {
+      left: 100%;
+    }
+
+    .nav-link:hover,
+    .nav-link.active {
+      color: var(--primary);
+      background: rgba(56, 189, 248, 0.1);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 15px rgba(56, 189, 248, 0.2);
+    }
+
+    .nav-link.active {
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--primary);
+    }
+
+    .nav-link.active::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 4px;
+      height: 4px;
+      background: var(--primary);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--primary);
+    }
+
+    .nav-icon {
+      font-size: 1rem;
+      transition: transform 0.3s ease;
+    }
+
+    .nav-link:hover .nav-icon {
+      transform: scale(1.2);
+    }
+
+    .nav-text {
+      transition: all 0.3s ease;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+      z-index: 1001;
+    }
+
+    .user-status {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      transition: all 0.3s ease;
+    }
+
+    .user-status:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .status-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 6px var(--accent);
+      animation: statusPulse 2s ease-in-out infinite;
+    }
+
+    .status-indicator.online {
+      background: var(--accent);
+    }
+
+    .status-indicator.offline {
+      background: var(--danger);
+    }
+
+    .user-name {
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .nav-toggle {
+      display: none;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      padding: 0.5rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .nav-toggle:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .hamburger {
+      display: block;
+      width: 20px;
+      height: 2px;
+      background: var(--text);
+      position: relative;
+      transition: all 0.3s ease;
+      --before-transform: rotate(0deg) translateY(-6px);
+      --after-transform: rotate(0deg) translateY(6px);
+    }
+
+    .hamburger::before,
+    .hamburger::after {
+      content: '';
+      display: block;
+      width: 20px;
+      height: 2px;
+      background: var(--text);
+      position: absolute;
+      transition: all 0.3s ease;
+    }
+
+    .hamburger::before {
+      transform: var(--before-transform);
+    }
+
+    .hamburger::after {
+      transform: var(--after-transform);
+    }
+
+    .nav-progress {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: rgba(255, 255, 255, 0.1);
+      overflow: hidden;
+    }
+
+    .nav-progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, var(--primary), var(--accent));
+      width: 0%;
+      transition: width 0.3s ease;
+      box-shadow: 0 0 10px var(--primary);
+    }
+
+    /* Menubar Styles */
+    .menubar {
+      position: fixed;
+      top: 0;
+      left: -320px;
+      width: 300px;
+      height: 100vh;
+      background: rgba(6, 25, 43, 0.98);
+      backdrop-filter: blur(20px);
+      border-right: 1px solid rgba(56, 189, 248, 0.2);
+      box-shadow: 4px 0 20px rgba(0, 0, 0, 0.3);
+      z-index: 2000;
+      transition: left 0.3s ease;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .menubar.active {
+      left: 0;
+    }
+
+    .menubar-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.5rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .menubar-brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      color: var(--primary);
+      font-weight: 700;
+      font-size: 1.2rem;
+    }
+
+    .menubar-close {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      padding: 0.5rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      color: var(--text);
+    }
+
+    .menubar-close:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .close-icon {
+      font-size: 1rem;
+    }
+
+    .menubar-nav {
+      flex: 1;
+      padding: 1rem 0;
+      overflow-y: auto;
+    }
+
+    .menubar-section {
+      margin-bottom: 1.5rem;
+    }
+
+    .menubar-section-title {
+      padding: 0 1.5rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 0.5rem;
+    }
+
+    .menubar-links {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .menubar-links li {
+      margin: 0.25rem 0;
+    }
+
+    .menubar-link {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1.5rem;
+      color: var(--muted);
+      text-decoration: none;
+      font-weight: 500;
+      transition: all 0.3s ease;
+      position: relative;
+      border-radius: 0 25px 25px 0;
+      margin-right: 0.5rem;
+    }
+
+    .menubar-link:hover,
+    .menubar-link.active {
+      color: var(--primary);
+      background: rgba(56, 189, 248, 0.1);
+    }
+
+    .menubar-link.active::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 4px;
+      height: 60%;
+      background: var(--primary);
+      border-radius: 0 2px 2px 0;
+      box-shadow: 0 0 8px var(--primary);
+    }
+
+    .menubar-icon {
+      font-size: 1.1rem;
+      width: 20px;
+      text-align: center;
+    }
+
+    .menubar-text {
+      flex: 1;
+    }
+
+    .menubar-footer {
+      padding: 1.5rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .user-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 600;
+      font-size: 1rem;
+    }
+
+    .user-details {
+      flex: 1;
+    }
+
+    .user-name {
+      font-weight: 500;
+      color: var(--text);
+      margin-bottom: 0.25rem;
+    }
+
+    .user-role {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .menubar-toggle {
+      position: fixed;
+      top: 1rem;
+      left: 1rem;
+      z-index: 1500;
+      background: rgba(6, 25, 43, 0.9);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      border-radius: 8px;
+      padding: 0.75rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      color: var(--primary);
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    }
+
+    .menubar-toggle:hover {
+      background: rgba(6, 25, 43, 0.95);
+      transform: scale(1.05);
+    }
+
+    .toggle-icon {
+      font-size: 1.2rem;
+    }
+
+    .menubar-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      opacity: 0;
+      visibility: hidden;
+      z-index: 1500;
+      transition: all 0.3s ease;
+    }
+
+    .menubar-overlay.active {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    @media (max-width: 768px) {
+      .menubar-toggle {
+        top: 0.75rem;
+        left: 0.75rem;
+        padding: 0.6rem;
+      }
+
+      .menubar {
+        width: 280px;
+        left: -280px;
+      }
+
+      .menubar.active ~ .menubar-overlay {
+        opacity: 1;
+        visibility: visible;
+      }
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      border: none;
+      border-radius: 999px;
+      padding: 0.8rem 1.4rem;
+      cursor: pointer;
+      transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 0;
+      height: 0;
+      background: rgba(255,255,255,0.2);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      transition: width 0.6s ease, height 0.6s ease;
+    }
+
+    .btn:active::before {
+      width: 300px;
+      height: 300px;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      color: #fff;
+      box-shadow: 0 14px 38px rgba(56, 189, 248, 0.18);
+    }
+
+    .btn-secondary {
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .btn:hover {
+      transform: translateY(-2px) scale(1.02);
+      box-shadow: 0 20px 45px rgba(56, 189, 248, 0.25);
+    }
+
+    .hero {
+      padding: 8rem 0 5rem;
+      position: relative;
+    }
+
+    .hero::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 20% 40%, rgba(56, 189, 248, 0.16), transparent 25%),
+                  radial-gradient(circle at 80% 30%, rgba(34, 197, 94, 0.1), transparent 15%);
+      pointer-events: none;
+    }
+
+    .hero-copy {
+      max-width: 720px;
+      margin-bottom: 2rem;
+    }
+
+    .hero-title {
+      font-size: clamp(2.8rem, 5vw, 4.5rem);
+      margin-bottom: 1rem;
+      line-height: 1.02;
+      letter-spacing: -0.04em;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: titleFloat 3s ease-in-out infinite;
+    }
+
+    @keyframes titleFloat {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-5px); }
+    }
+
+    .hero-text {
+      color: var(--muted);
+      font-size: 1.05rem;
+      margin-bottom: 1.8rem;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1.25rem;
+      margin-top: 3rem;
+    }
+
+    .feature-panel {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 1.25rem;
+      padding: 1.75rem;
+      min-height: 180px;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+      animation: featureSlideIn 0.8s ease-out;
+      animation-fill-mode: both;
+    }
+
+    .feature-panel:nth-child(1) { animation-delay: 0.1s; }
+    .feature-panel:nth-child(2) { animation-delay: 0.2s; }
+    .feature-panel:nth-child(3) { animation-delay: 0.3s; }
+
+    .feature-panel:hover {
+      transform: translateY(-8px);
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.2);
+    }
+
+    @keyframes featureSlideIn {
+      from {
+        opacity: 0;
+        transform: translateY(30px) scale(0.95);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    .feature-panel h3 {
+      margin: 0;
+      font-size: 1.15rem;
+      color: #fff;
+    }
+
+    .feature-panel p {
+      color: var(--muted);
+      margin: 0;
+      flex: 1;
+    }
+
+    .section-title {
+      font-size: clamp(2rem, 4vw, 2.75rem);
+      margin-bottom: 0.75rem;
+    }
+
+    .section-subtitle {
+      max-width: 720px;
+      color: var(--muted);
+      margin-bottom: 2.5rem;
+    }
+
+    .section {
+      padding: 4rem 0;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 1.5rem;
+      padding: 1.75rem;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.12);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+      animation: cardFadeIn 0.6s ease-out;
+    }
+
+    .card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 30px 70px rgba(0, 0, 0, 0.15);
+    }
+
+    @keyframes cardFadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .card h3 {
+      margin-top: 0;
+      font-size: 1.3rem;
+      margin-bottom: 1rem;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1.5rem;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1.25rem;
+    }
+
+    .upload-box {
+      border: 2px dashed rgba(255,255,255,0.14);
+      border-radius: 1.25rem;
+      padding: 2rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.3s ease, background 0.3s ease, transform 0.3s ease;
+      min-height: 250px;
+      display: grid;
+      place-items: center;
+      gap: 1rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .upload-box::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(56, 189, 248, 0.1), transparent);
+      transition: left 0.5s ease;
+    }
+
+    .upload-box:hover::before {
+      left: 100%;
+    }
+
+    .upload-box:hover,
+    .upload-box.dragging {
+      border-color: rgba(56, 189, 248, 0.9);
+      background: rgba(56, 189, 248, 0.08);
+      transform: scale(1.02);
+    }
+
+    .upload-box p {
+      color: var(--muted);
+      margin: 0;
+    }
+
+    .upload-box input {
+      display: none;
+    }
+
+    .panel-label {
+      color: var(--muted);
+      font-size: 0.95rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 1rem;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(16, 185, 129, 0.14);
+      color: var(--accent);
+      border-radius: 999px;
+      padding: 0.5rem 0.85rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.35rem 0.8rem;
+      border-radius: 999px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      animation: statusPulse 2s ease-in-out infinite;
+    }
+
+    .status-success { background: rgba(34, 197, 94, 0.14); color: var(--accent); }
+    .status-warning { background: rgba(251, 191, 36, 0.14); color: var(--warning); }
+    .status-danger { background: rgba(249, 115, 22, 0.14); color: var(--danger); }
+
+    @keyframes statusPulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+
+    .hidden { display: none; }
+
+    .loading-spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-radius: 50%;
+      border-top-color: #fff;
+      animation: spin 1s ease-in-out infinite;
+      margin-left: 8px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(2, 9, 25, 0.95);
+      z-index: 200;
+      padding: 1rem;
+      backdrop-filter: blur(8px);
+    }
+
+    .modal.active {
+      display: flex;
+    }
+
+    .modal::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: url('https://images.unsplash.com/photo-1446776877081-d282a0f896e2?w=1920&h=1080&fit=crop') center/cover;
+      opacity: 0.1;
+      animation: satelliteDrift 20s ease-in-out infinite;
+    }
+
+    @keyframes satelliteDrift {
+      0%, 100% { transform: scale(1) rotate(0deg); }
+      25% { transform: scale(1.05) rotate(1deg); }
+      50% { transform: scale(1.1) rotate(-1deg); }
+      75% { transform: scale(1.05) rotate(0.5deg); }
+    }
+
+    .satellite-orbit {
+      position: absolute;
+      width: 100px;
+      height: 100px;
+      border-radius: 50%;
+      border: 2px solid rgba(56, 189, 248, 0.3);
+      animation: orbit 15s linear infinite;
+      top: 20%;
+      left: 10%;
+    }
+
+    .satellite-orbit::after {
+      content: '';
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      background: var(--primary);
+      border-radius: 50%;
+      top: -4px;
+      left: 50%;
+      transform: translateX(-50%);
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.8);
+    }
+
+    @keyframes orbit {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    .satellite-orbit-2 {
+      position: absolute;
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      border: 2px solid rgba(34, 197, 94, 0.3);
+      animation: orbit 12s linear infinite reverse;
+      top: 60%;
+      right: 15%;
+    }
+
+    .satellite-orbit-2::after {
+      content: '';
+      position: absolute;
+      width: 6px;
+      height: 6px;
+      background: var(--accent);
+      border-radius: 50%;
+      top: -3px;
+      left: 50%;
+      transform: translateX(-50%);
+      box-shadow: 0 0 8px rgba(34, 197, 94, 0.8);
+    }
+
+    .modal-card {
+      width: min(500px, 100%);
+      background: rgba(10, 24, 42, 0.98);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 1.25rem;
+      padding: 2rem;
+      position: relative;
+    }
+
+    .modal-close {
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-size: 1.35rem;
+      cursor: pointer;
+    }
+
+    .modal-card h2 {
+      margin-top: 0;
+      margin-bottom: 0.75rem;
+      font-size: 1.8rem;
+    }
+
+    .input-group {
+      display: grid;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+
+    .input-group label {
+      font-size: 0.95rem;
+      color: var(--muted);
+    }
+
+    .input-group input {
+      width: 100%;
+      padding: 0.95rem 1rem;
+      border-radius: 0.9rem;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.04);
+      color: var(--text);
+    }
+
+    .input-group input:focus {
+      outline: none;
+      border-color: rgba(56, 189, 248, 0.8);
+      box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.12);
+    }
+
+    .modal-actions {
+      margin-top: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+    }
+
+    .modal-footer {
+      margin-top: 1rem;
+      color: var(--muted);
+      font-size: 0.95rem;
+      text-align: center;
+    }
+
+    .modal-footer button {
+      background: transparent;
+      border: none;
+      color: var(--primary);
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .alert-banner {
+      padding: 1rem 1.2rem;
+      border-radius: 1rem;
+      margin-bottom: 1rem;
+      display: none;
+      align-items: center;
+      gap: 0.75rem;
+      font-weight: 500;
+      animation: alertSlideIn 0.5s ease-out;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .alert-banner::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+      animation: alertShimmer 2s ease-in-out infinite;
+    }
+
+    @keyframes alertSlideIn {
+      from {
+        opacity: 0;
+        transform: translateY(-20px) scale(0.95);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    @keyframes alertShimmer {
+      0%, 100% { left: -100%; }
+      50% { left: 100%; }
+    }
+
+    .alert-banner.active {
+      display: flex;
+    }
+
+    .alert-success { background: rgba(34, 197, 94, 0.12); color: var(--accent); }
+    .alert-error { background: rgba(249, 115, 22, 0.12); color: var(--danger); }
+
+    .dashboard {
+      padding: 7rem 0 4rem;
+    }
+
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 1.5rem;
+    }
+
+    .result-card {
+      margin-top: 1.5rem;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 1.25rem;
+      padding: 1.5rem;
+    }
+
+    .result-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .result-label {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .result-value {
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .history-list {
+      display: grid;
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+
+    .history-card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 1rem;
+      padding: 1rem;
+    }
+
+    .history-card h4 {
+      margin: 0 0 0.5rem 0;
+    }
+
+    .history-card p {
+      margin: 0.35rem 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .small-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.85rem;
+    }
+
+    .meter {
+      width: 100%;
+      height: 0.75rem;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.08);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .meter::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+      animation: shimmer 2s ease-in-out infinite;
+    }
+
+    .meter-fill {
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      transition: width 0.8s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .meter-fill::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+      animation: progressShine 1.5s ease-in-out infinite;
+    }
+
+    @keyframes shimmer {
+      0%, 100% { transform: translateX(-100%); }
+      50% { transform: translateX(100%); }
+    }
+
+    @keyframes progressShine {
+      0% { left: -100%; }
+      100% { left: 100%; }
+    }
+
+    .map-panel {
+      min-height: 380px;
+      border-radius: 1.25rem;
+      overflow: hidden;
+      position: relative;
+      border: 3px solid rgba(56, 189, 248, 0.8);
+      background: linear-gradient(180deg, rgba(6, 25, 43, 0.96), rgba(6, 25, 43, 0.85));
+      box-shadow: 0 0 20px rgba(56, 189, 248, 0.3);
+    }
+
+    .map-canvas {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 45% 35%, rgba(56, 189, 248, 0.16), transparent 20%),
+                  radial-gradient(circle at 65% 60%, rgba(249, 115, 22, 0.12), transparent 15%),
+                  linear-gradient(180deg, rgba(10, 28, 47, 1), rgba(6, 25, 43, 0.9));
+    }
+
+    .map-overlay {
+      position: absolute;
+      inset: 0;
+      padding: 1.5rem;
+      display: grid;
+      gap: 0.85rem;
+      pointer-events: none;
+    }
+
+    .map-spot {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: rgba(248, 113, 33, 0.9);
+      box-shadow: 0 0 18px rgba(248, 113, 33, 0.35);
+      animation: hotspotPulse 2s ease-in-out infinite;
+    }
+
+    @keyframes hotspotPulse {
+      0%, 100% {
+        transform: scale(1);
+        opacity: 0.9;
+      }
+      50% {
+        transform: scale(1.3);
+        opacity: 1;
+      }
+    }
+
+    .alert-list {
+      display: grid;
+      gap: 0.75rem;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .alert-item {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 0.75rem;
+      padding: 1rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      position: relative;
+    }
+
+    .alert-item:hover {
+      background: rgba(255,255,255,0.08);
+      transform: translateY(-2px);
+    }
+
+    .alert-item.warning {
+      border-left: 4px solid var(--warning);
+    }
+
+    .alert-item.danger {
+      border-left: 4px solid var(--danger);
+    }
+
+    .alert-item.success {
+      border-left: 4px solid var(--accent);
+    }
+
+    .alert-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+
+    .alert-category {
+      font-size: 0.8rem;
+      color: var(--primary);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .alert-time {
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    .alert-message {
+      color: var(--text);
+      font-size: 0.9rem;
+      margin: 0;
+    }
+
+    .alert-indicator {
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      width: 8px;
+      height: 8px;
+      background: var(--danger);
+      border-radius: 50%;
+      animation: alertBlink 1.5s ease-in-out infinite;
+    }
+
+    @keyframes alertBlink {
+      0%, 50% { opacity: 1; }
+      51%, 100% { opacity: 0.3; }
+    }
+
+    .mini-list {
+      display: grid;
+      gap: 0.85rem;
+      margin-top: 1rem;
+    }
+
+    .mini-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.9rem 1rem;
+      border-radius: 1rem;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.06);
+      color: var(--muted);
+    }
+
+    .chart-wrapper {
+      min-height: 300px;
+      position: relative;
+    }
+
+    .ocean-3d {
+      min-height: 330px;
+      border-radius: 1.25rem;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: linear-gradient(180deg, #06192b 0%, #0f2340 100%);
+      position: relative;
+    }
+
+    .footer {
+      padding: 3rem 0 2rem;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    @media (max-width: 1024px) {
+      .main-nav {
+        margin: 0 1rem;
+      }
+
+      .nav-links {
+        gap: 0.25rem;
+      }
+
+      .nav-link {
+        padding: 0.6rem 1rem;
+        font-size: 0.85rem;
+      }
+
+      .nav-text {
+        display: none;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .header {
+        padding: 0 1rem;
+      }
+
+      .nav {
+        padding: 0.75rem 0;
+      }
+
+      .main-nav {
+        position: fixed;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: rgba(6, 25, 43, 0.98);
+        backdrop-filter: blur(20px);
+        border-bottom: 1px solid rgba(56, 189, 248, 0.2);
+        transform: translateY(-100%);
+        opacity: 0;
+        visibility: hidden;
+        transition: all 0.3s ease;
+        margin: 0;
+        padding: 1rem;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      }
+
+      .main-nav.active {
+        transform: translateY(0);
+        opacity: 1;
+        visibility: visible;
+      }
+
+      .nav-links {
+        flex-direction: column;
+        gap: 0.5rem;
+        background: transparent;
+        border: none;
+        padding: 0;
+      }
+
+      .nav-links li {
+        width: 100%;
+      }
+
+      .nav-link {
+        justify-content: flex-start;
+        padding: 1rem;
+        border-radius: 12px;
+        width: 100%;
+        font-size: 1rem;
+      }
+
+      .nav-text {
+        display: block;
+      }
+
+      .nav-toggle {
+        display: block;
+      }
+
+      .header-actions {
+        gap: 0.5rem;
+      }
+
+      .user-status {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Menubar/Sidebar -->
+  <div class="menubar" id="menubar">
+    <div class="menubar-header">
+      <div class="menubar-brand">
+        <span class="brand-icon">🌊</span>
+        <span class="brand-text">OceanEye</span>
+      </div>
+      <button class="menubar-close" id="menubarClose">
+        <span class="close-icon">✕</span>
+      </button>
+    </div>
+    
+    <nav class="menubar-nav">
+      <div class="menubar-section">
+        <div class="menubar-section-title">Dashboard</div>
+        <ul class="menubar-links">
+          <li><a href="#hero" class="menubar-link active" data-section="hero">
+            <span class="menubar-icon">📊</span>
+            <span class="menubar-text">Overview</span>
+          </a></li>
+          <li><a href="#dashboard" class="menubar-link" data-section="dashboard">
+            <span class="menubar-icon">📈</span>
+            <span class="menubar-text">Analytics</span>
+          </a></li>
+          <li><a href="#mapping" class="menubar-link" data-section="mapping">
+            <span class="menubar-icon">🗺️</span>
+            <span class="menubar-text">Mapping</span>
+          </a></li>
+        </ul>
+      </div>
+      
+      <div class="menubar-section">
+        <div class="menubar-section-title">Operations</div>
+        <ul class="menubar-links">
+          <li><a href="#ingestion" class="menubar-link" data-section="ingestion">
+            <span class="menubar-icon">📥</span>
+            <span class="menubar-text">Data Ingestion</span>
+          </a></li>
+          <li><a href="#detection" class="menubar-link" data-section="detection">
+            <span class="menubar-icon">🔍</span>
+            <span class="menubar-text">Detection</span>
+          </a></li>
+          <li><a href="#tracking" class="menubar-link" data-section="tracking">
+            <span class="menubar-icon">📍</span>
+            <span class="menubar-text">Tracking</span>
+          </a></li>
+        </ul>
+      </div>
+      
+      <div class="menubar-section">
+        <div class="menubar-section-title">System</div>
+        <ul class="menubar-links">
+          <li><a href="#" class="menubar-link" onclick="exportData()">
+            <span class="menubar-icon">💾</span>
+            <span class="menubar-text">Export Data</span>
+          </a></li>
+          <li><a href="#" class="menubar-link" onclick="refreshAllData()">
+            <span class="menubar-icon">🔄</span>
+            <span class="menubar-text">Refresh</span>
+          </a></li>
+          <li><a href="#" class="menubar-link" onclick="showSettings()">
+            <span class="menubar-icon">⚙️</span>
+            <span class="menubar-text">Settings</span>
+          </a></li>
+        </ul>
+      </div>
+    </nav>
+    
+    <div class="menubar-footer">
+      <div class="user-info">
+        <div class="user-avatar">
+          <span id="userInitial">G</span>
+        </div>
+        <div class="user-details">
+          <div class="user-name" id="menubarUserName">Guest</div>
+          <div class="user-role">Operator</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Menubar Toggle Button -->
+  <button class="menubar-toggle" id="menubarToggle">
+    <span class="toggle-icon">☰</span>
+  </button>
+
+  <!-- Overlay for mobile -->
+  <div class="menubar-overlay" id="menubarOverlay"></div>
+  <header class="header">
+    <div class="container nav">
+      <a class="brand" href="#hero">
+        <span class="brand-icon">🌊</span>
+        <span class="brand-text">OceanEye</span>
+      </a>
+
+      <nav class="main-nav">
+        <ul class="nav-links">
+          <li><a href="#hero" class="nav-link active" data-section="hero">
+            <span class="nav-icon">📊</span>
+            <span class="nav-text">Dashboard</span>
+          </a></li>
+          <li><a href="#ingestion" class="nav-link" data-section="ingestion">
+            <span class="nav-icon">📥</span>
+            <span class="nav-text">Ingestion</span>
+          </a></li>
+          <li><a href="#detection" class="nav-link" data-section="detection">
+            <span class="nav-icon">🔍</span>
+            <span class="nav-text">Detection</span>
+          </a></li>
+          <li><a href="#dashboard" class="nav-link" data-section="dashboard">
+            <span class="nav-icon">📈</span>
+            <span class="nav-text">Analytics</span>
+          </a></li>
+          <li><a href="#mapping" class="nav-link" data-section="mapping">
+            <span class="nav-icon">🗺️</span>
+            <span class="nav-text">Mapping</span>
+          </a></li>
+        </ul>
+      </nav>
+
+      <div class="header-actions">
+        <div class="user-status" id="userStatus">
+          <span class="status-indicator online"></span>
+          <span class="user-name" id="currentUserName">Guest</span>
+        </div>
+        <button class="btn btn-secondary" id="signInBtn">Sign In</button>
+        <button class="btn btn-primary" id="signUpBtn">Sign Up</button>
+        <button class="nav-toggle" id="navToggle">
+          <span class="hamburger"></span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Navigation Progress Bar -->
+    <div class="nav-progress">
+      <div class="nav-progress-bar" id="navProgress"></div>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero" id="hero">
+      <div class="container">
+        <div class="hero-copy">
+          <p class="chip">Full-stack mission control</p>
+          <h1 class="hero-title">AI-Powered Marine Plastic Detection for India's Coasts</h1>
+          <p class="hero-text">OceanEye is built for Indian coastal protection: secure login, live data ingestion, plastic-type detection, explainable AI, trajectory forecasting, and mission-ready reporting.</p>
+          <div class="hero-actions">
+            <button class="btn btn-primary" id="heroStartBtn">Launch Mission</button>
+            <button class="btn btn-secondary" id="heroLearnBtn">Explore Features</button>
+          </div>
+        </div>
+
+        <div class="feature-grid">
+          <div class="feature-panel">
+            <h3>Secure Authentication</h3>
+            <p>User accounts, session persistence, login/signup flow, and history storage in browser-backed local execution.</p>
+          </div>
+          <div class="feature-panel">
+            <h3>Data Ingestion</h3>
+            <p>Drag-and-drop satellite imagery, upload automation, validation states, and processing sequence simulation.</p>
+          </div>
+          <div class="feature-panel">
+            <h3>AI Detection</h3>
+            <p>Mocked AI inference pipeline that detects plastic objects, generates bounding boxes, and summarizes confidence.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="ingestion">
+      <div class="container">
+        <div class="section-title">Mission Console</div>
+        <p class="section-subtitle">Track ingestion progress, upload mission imagery, and monitor processing states in the mission control workflow.</p>
+        <div class="grid-2">
+          <div class="card">
+            <div class="panel-label">Data Ingestion Pipeline</div>
+            <div class="small-grid">
+              <div class="chip">Satellite</div>
+              <div class="chip">Ocean Sensors</div>
+              <div class="chip">Recon Drones</div>
+              <div class="chip">Manual Upload</div>
+            </div>
+            <div class="upload-box" id="uploadBox">
+              <div>
+                <p style="font-size: 1.25rem; margin-bottom: 0.5rem;">Upload imagery</p>
+                <p>Drop a satellite photo or scan to begin analysis.</p>
+              </div>
+              <input type="file" accept="image/*" id="imageInput" />
+            </div>
+            <div class="result-card" id="pipelineCard">
+              <div class="result-row"><span>Validation</span><span class="status-pill status-success">Complete</span></div>
+              <div class="result-row"><span>Processing</span><span class="status-pill status-warning">Queued</span></div>
+              <div class="result-row"><span>AI ingestion</span><span class="status-pill status-warning">Waiting</span></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="panel-label">Latest Mission Metrics</div>
+            <div class="grid-3" style="margin-top: 1rem;">
+              <div class="feature-panel" style="padding:1rem; background:rgba(255,255,255,0.04);">
+                <h3>1,284</h3>
+                <p>Plastic hotspots</p>
+              </div>
+              <div class="feature-panel" style="padding:1rem; background:rgba(255,255,255,0.04);">
+                <h3>94.1%</h3>
+                <p>Detection accuracy</p>
+              </div>
+              <div class="feature-panel" style="padding:1rem; background:rgba(255,255,255,0.04);">
+                <h3>32</h3>
+                <p>Alerts active</p>
+              </div>
+            </div>
+            <div style="margin-top:1.5rem;">
+              <div class="panel-label">Upload status</div>
+              <div class="meter"><div class="meter-fill" style="width: 52%;"></div></div>
+              <p style="margin-top:0.8rem; color: var(--muted);">Image validation and model ingestion currently in progress.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="detection">
+      <div class="container">
+        <div class="section-title">AI Waste Detection</div>
+        <p class="section-subtitle">Run advanced classification and review detections instantly with visual overlays and explainable outputs.</p>
+        <div class="grid-2">
+          <div class="card">
+            <div class="panel-label">Detection Preview</div>
+            <div class="upload-box" id="detectionBox" style="min-height: 310px;">
+              <p id="detectionPrompt">Upload an image in the ingestion section to activate detection.</p>
+              <img id="previewImage" src="" alt="Preview" style="width:100%; border-radius:1rem; display:none; object-fit:contain; max-height:320px;" />
+            </div>
+            <div class="modal-actions" style="margin-top:1rem;">
+              <button class="btn btn-primary" id="detectBtn" disabled>Run Detection</button>
+              <button class="btn btn-secondary" id="clearBtn">Reset Panel</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="panel-label">Detection Summary</div>
+            <div id="detectionSummary" class="result-card" style="margin-top:1rem;">
+              <div class="result-row"><span>Plastic Found</span><span id="summaryDetected">—</span></div>
+              <div class="result-row"><span>Detected Type</span><span id="summaryType">—</span></div>
+              <div class="result-row"><span>Estimated Area</span><span id="summaryArea">—</span></div>
+              <div class="result-row"><span>Analysis Time</span><span id="summaryTimestamp">—</span></div>
+              <div class="result-row"><span>Processing Duration</span><span id="summaryDuration">—</span></div>
+              <div class="result-row"><span>Confidence</span><span id="summaryConfidence">—</span></div>
+            </div>
+            <div class="result-card" style="margin-top:1.2rem;">
+              <strong>Explainable AI</strong>
+              <p style="margin:0.8rem 0 0; color: var(--muted);">The model uses spectral texture features and shape clustering to separate macroplastic from natural debris.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="visualization">
+      <div class="container">
+        <div class="section-title">Visualization &amp; Mission Analytics</div>
+        <p class="section-subtitle">Inspect trends, regional impact, and sea trajectory forecasts on interactive charts and 3D ocean visualization.</p>
+        <div class="grid-2">
+          <div class="card chart-wrapper">
+            <canvas id="trendChart"></canvas>
+          </div>
+          <div class="card chart-wrapper">
+            <canvas id="distributionChart"></canvas>
+          </div>
+        </div>
+        <div class="grid-2" style="margin-top:1.5rem;">
+          <div class="card chart-wrapper">
+            <canvas id="regionChart"></canvas>
+          </div>
+          <div class="card ocean-3d" id="oceanCanvas"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="mapping">
+      <div class="container">
+        <div class="section-title">Pollution Map &amp; Trajectory Prediction</div>
+        <p class="section-subtitle">Simulated ocean heatmap and drift forecast let mission teams see where waste is likely to travel.</p>
+        <div class="grid-2">
+          <div class="card map-panel">
+            <div id="map" style="height: 100%; width: 100%;"></div>
+          </div>
+          <div class="card">
+            <div class="panel-label">Trajectory Forecast & Tracking</div>
+            <div class="mini-list" id="trajectoryList">
+              <div class="mini-item"><span>Current drift</span><strong id="currentDrift">Northwest</strong></div>
+              <div class="mini-item"><span>Predicted arrival</span><strong id="predictedArrival">12–18h</strong></div>
+              <div class="mini-item"><span>Impact zone</span><strong id="impactZone">Goa Coast</strong></div>
+              <div class="mini-item"><span>Tracking ID</span><strong id="trackingId">OE-2024-045</strong></div>
+              <div class="mini-item"><span>Last update</span><strong id="lastUpdate">2 min ago</strong></div>
+            </div>
+            <div class="result-card" style="margin-top:1.5rem;">
+              <div class="result-row"><span>Marine transport speed</span><span id="transportSpeed">1.8 kn</span></div>
+              <div class="result-row"><span>Probability of spread</span><span id="spreadProb">78%</span></div>
+              <div class="result-row"><span>Active trackers</span><span id="activeTrackers">12</span></div>
+              <div class="result-row"><span>Alert level</span><span class="status-pill status-warning" id="alertLevel">Medium</span></div>
+            </div>
+            <button class="btn btn-primary" id="forecastBtn" style="margin-top:1.2rem;">Refresh Prediction</button>
+            <button class="btn btn-secondary" id="trackBtn" style="margin-top:0.5rem;">Start Tracking</button>
+          </div>
+        </div>
+      </div>
+    <section class="section" id="dashboard">
+      <div class="container">
+        <div class="section-title">Mission Control Dashboard</div>
+        <p class="section-subtitle">Real-time monitoring and management of marine plastic detection operations across India's coastal regions.</p>
+        
+        <div class="card" style="margin-bottom: 2rem;">
+          <div class="panel-label">Dashboard Controls</div>
+          <div class="grid-4" style="margin-top: 1rem;">
+            <button class="btn btn-primary" onclick="exportData()">
+              <span class="btn-icon">💾</span>
+              Export Data
+            </button>
+            <button class="btn btn-secondary" onclick="clearOldMissions()">
+              <span class="btn-icon">🗑️</span>
+              Clear Missions
+            </button>
+            <button class="btn btn-secondary" onclick="refreshAllData()">
+              <span class="btn-icon">🔄</span>
+              Refresh
+            </button>
+            <button class="btn btn-accent" onclick="toggleRealTime()">
+              <span class="btn-icon" id="realtimeIcon">⏸️</span>
+              <span id="realtimeText">Pause Updates</span>
+            </button>
+          </div>
+          <div class="result-card" style="margin-top: 1rem;">
+            <div class="result-row">
+              <span>Last Update:</span>
+              <span id="lastUpdateTime">Just now</span>
+            </div>
+            <div class="result-row">
+              <span>Data Points:</span>
+              <span id="dataPointsCount">Loading...</span>
+            </div>
+            <div class="result-row">
+              <span>System Status:</span>
+              <span class="status-pill status-success" id="systemStatus">Online</span>
+            </div>
+          </div>
+        </div>
+        <div class="dashboard-grid">
+          <div class="card">
+            <div class="panel-label">Active Missions</div>
+            <div class="result-card">
+              <div class="result-row"><span>Total Missions</span><span id="totalMissions">47</span></div>
+              <div class="result-row"><span>Active Now</span><span id="activeMissions">12</span></div>
+              <div class="result-row"><span>Completed Today</span><span id="completedToday">8</span></div>
+              <div class="result-row"><span>Success Rate</span><span id="successRate">94.2%</span></div>
+            </div>
+            <div class="meter" style="margin-top:1rem;"><div class="meter-fill" id="missionProgress" style="width: 75%;"></div></div>
+            <p style="margin-top:0.8rem; color: var(--muted); font-size:0.9rem;">Mission completion progress</p>
+          </div>
+          <div class="card">
+            <div class="panel-label">Environmental Monitoring</div>
+            <div class="grid-3" style="margin-top:1rem;">
+              <div class="feature-panel" style="padding:1rem; background:rgba(255,255,255,0.04);">
+                <h3 id="envTemp">28.5°C</h3>
+                <p>Water Temp</p>
+              </div>
+              <div class="feature-panel" style="padding:1rem; background:rgba(255,255,255,0.04);">
+                <h3 id="envSalinity">35.2 PSU</h3>
+                <p>Salinity</p>
+              </div>
+              <div class="feature-panel" style="padding:1rem; background:rgba(255,255,255,0.04);">
+                <h3 id="envTurbidity">2.1 NTU</h3>
+                <p>Turbidity</p>
+              </div>
+            </div>
+            <div class="result-card" style="margin-top:1.5rem;">
+              <strong>Water Quality Status</strong>
+              <p style="margin:0.8rem 0 0; color: var(--muted); font-size:0.9rem;">Real-time monitoring of coastal water conditions.</p>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:2rem;">
+          <div class="panel-label">Recent Mission History</div>
+          <div class="history-list" id="missionHistory">
+            <div class="history-card">
+              <h4>Mission OE-2024-045</h4>
+              <p>Location: Mumbai Coast</p>
+              <p>Status: <span class="status-pill status-success">Completed</span></p>
+              <p>Plastic detected: 1.2 kg</p>
+              <p>Response time: 4.5 hours</p>
+            </div>
+            <div class="history-card">
+              <h4>Mission OE-2024-044</h4>
+              <p>Location: Goa Beach</p>
+              <p>Status: <span class="status-pill status-warning">In Progress</span></p>
+              <p>Plastic detected: 0.8 kg</p>
+              <p>Response time: 2.1 hours</p>
+            </div>
+            <div class="history-card">
+              <h4>Mission OE-2024-043</h4>
+              <p>Location: Chennai Harbor</p>
+              <p>Status: <span class="status-pill status-success">Completed</span></p>
+              <p>Plastic detected: 2.1 kg</p>
+              <p>Response time: 6.2 hours</p>
+            </div>
+          </div>
+        </div>
+        <div class="grid-2" style="margin-top:2rem;">
+          <div class="card">
+            <div class="panel-label">Active Alerts</div>
+            <div id="alertContainer" class="alert-list">
+              <div class="alert-item warning">
+                <div class="alert-header">
+                  <span class="alert-category">Environmental</span>
+                  <span class="alert-time">2 min ago</span>
+                </div>
+                <div class="alert-message">High turbidity levels detected</div>
+                <div class="alert-indicator"></div>
+              </div>
+              <div class="alert-item danger">
+                <div class="alert-header">
+                  <span class="alert-category">Mission</span>
+                  <span class="alert-time">5 min ago</span>
+                </div>
+                <div class="alert-message">Response time exceeded for Mission OE-2024-042</div>
+                <div class="alert-indicator"></div>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="panel-label">System Status</div>
+            <div class="result-card">
+              <div class="result-row"><span>AI Model Status</span><span class="status-pill status-success" id="aiStatus">Online</span></div>
+              <div class="result-row"><span>Satellite Feed</span><span class="status-pill status-success">Active</span></div>
+              <div class="result-row"><span>Data Processing</span><span class="status-pill status-success">Normal</span></div>
+              <div class="result-row"><span>Network Status</span><span class="status-pill status-success" id="networkStatus">Stable</span></div>
+            </div>
+            <div class="result-card" style="margin-top:1.5rem;">
+              <strong>Performance Metrics</strong>
+              <p style="margin:0.8rem 0 0; color: var(--muted); font-size:0.9rem;">Average response time: 3.2 hours<br>System uptime: 99.8%<br>Data accuracy: 94.2%</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+      <div class="container">
+        <p>OceanEye simulation dashboard  Local browser deployment  Demo-only authentication and AI behavior</p>
+      </div>
+    </section>
+  </main>
+
+  <div class="modal" id="authModal">
+    <div class="satellite-orbit"></div>
+    <div class="satellite-orbit-2"></div>
+    <div class="modal-card">
+      <button class="modal-close" id="modalClose"></button>
+      <h2 id="authTitle">Sign In</h2>
+      <div class="alert-banner" id="authAlert"></div>
+      <form id="authForm">
+        <div class="input-group" id="nameGroup" style="display:none;">
+          <label for="authName">Full Name</label>
+          <input id="authName" type="text" placeholder="Your full name" autocomplete="name" />
+        </div>
+        <div class="input-group">
+          <label for="authEmail">Email address</label>
+          <input id="authEmail" type="email" placeholder="you@example.com" autocomplete="email" required />
+        </div>
+        <div class="input-group">
+          <label for="authPassword">Password</label>
+          <input id="authPassword" type="password" placeholder="" autocomplete="current-password" required />
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-primary" type="submit" id="authSubmit">Sign In</button>
+          <button type="button" class="btn btn-secondary" id="authModeBtn">Create account</button>
+        </div>
+      </form>
+      <div class="modal-footer">
+        <span id="authModeText">New to OceanEye?</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const signInBtn = document.getElementById('signInBtn');
+    const signUpBtn = document.getElementById('signUpBtn');
+    const heroStartBtn = document.getElementById('heroStartBtn');
+    const heroLearnBtn = document.getElementById('heroLearnBtn');
+    const authModal = document.getElementById('authModal');
+    const modalClose = document.getElementById('modalClose');
+    const authForm = document.getElementById('authForm');
+    const authTitle = document.getElementById('authTitle');
+    const authSubmit = document.getElementById('authSubmit');
+    const authModeBtn = document.getElementById('authModeBtn');
+    const authModeText = document.getElementById('authModeText');
+    const nameGroup = document.getElementById('nameGroup');
+    const authName = document.getElementById('authName');
+    const authEmail = document.getElementById('authEmail');
+    const authPassword = document.getElementById('authPassword');
+    const authAlert = document.getElementById('authAlert');
+    const uploadBox = document.getElementById('uploadBox');
+    const imageInput = document.getElementById('imageInput');
+    const previewImage = document.getElementById('previewImage');
+    const detectionPrompt = document.getElementById('detectionPrompt');
+    const detectBtn = document.getElementById('detectBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const summaryDetected = document.getElementById('summaryDetected');
+    const summaryConfidence = document.getElementById('summaryConfidence');
+    const summaryType = document.getElementById('summaryType');
+    const summaryArea = document.getElementById('summaryArea');
+    const summaryTimestamp = document.getElementById('summaryTimestamp');
+    const summaryDuration = document.getElementById('summaryDuration');
+    const forecastBtn = document.getElementById('forecastBtn');
+    const trackBtn = document.getElementById('trackBtn');
+    const currentDrift = document.getElementById('currentDrift');
+    const predictedArrival = document.getElementById('predictedArrival');
+    const impactZone = document.getElementById('impactZone');
+    const trackingId = document.getElementById('trackingId');
+    const lastUpdate = document.getElementById('lastUpdate');
+    const transportSpeed = document.getElementById('transportSpeed');
+    const spreadProb = document.getElementById('spreadProb');
+    const activeTrackers = document.getElementById('activeTrackers');
+    const alertLevel = document.getElementById('alertLevel');
+    const navToggle = document.getElementById('navToggle');
+    const mainNav = document.querySelector('.main-nav');
+    const header = document.querySelector('.header');
+    const navProgress = document.getElementById('navProgress');
+    const currentUserName = document.getElementById('currentUserName');
+    const userStatus = document.getElementById('userStatus');
+    const menubar = document.getElementById('menubar');
+    const menubarToggle = document.getElementById('menubarToggle');
+    const menubarClose = document.getElementById('menubarClose');
+    const menubarOverlay = document.getElementById('menubarOverlay');
+    const menubarUserName = document.getElementById('menubarUserName');
+    const userInitial = document.getElementById('userInitial');
+
+    let isSignIn = true;
+    let currentUser = null;
+    let currentAnalysis = null;
+    let analysisStartTime = null;
+    let map = null;
+    let markers = [];
+    let trackingInterval = null;
+    let trackingActive = false;
+    let dashboardInterval = null;
+    let chartUpdateInterval = null;
+    let alertInterval = null;
+    let missionData = [];
+    let environmentalData = {
+      temperature: 28.5,
+      salinity: 35.2,
+      turbidity: 2.1,
+      ph: 8.1,
+      oxygen: 6.8
+    };
+    let activeAlerts = [];
+
+    // Navigation functions
+    function setupNavigation() {
+      // Mobile menu toggle
+      navToggle.addEventListener('click', toggleMobileMenu);
+      
+      // Close mobile menu when clicking outside
+      document.addEventListener('click', (e) => {
+        if (!header.contains(e.target) && mainNav.classList.contains('active') && !navToggle.contains(e.target)) {
+          toggleMobileMenu();
+        }
+      });
+      
+      // Smooth scrolling for navigation links
+      document.querySelectorAll('.nav-link').forEach(link => {
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          const targetId = link.getAttribute('href').substring(1);
+          const targetSection = document.getElementById(targetId);
+          
+          if (targetSection) {
+            const headerHeight = header.offsetHeight;
+            const targetPosition = targetSection.offsetTop - headerHeight - 20;
+            
+            window.scrollTo({
+              top: targetPosition,
+              behavior: 'smooth'
+            });
+            
+            // Close mobile menu after navigation
+            if (mainNav.classList.contains('active')) {
+              toggleMobileMenu();
+            }
+            
+            // Update active link
+            updateActiveNavLink(targetId);
+          }
+        });
+      });
+      
+      // Header scroll effect
+      window.addEventListener('scroll', handleScroll);
+      
+      // Scroll spy for active navigation
+      window.addEventListener('scroll', updateScrollSpy);
+      
+      // Initialize scroll spy
+      updateScrollSpy();
+    }
+    
+    function toggleMobileMenu() {
+      mainNav.classList.toggle('active');
+      navToggle.classList.toggle('active');
+      
+      // Animate hamburger
+      const hamburger = navToggle.querySelector('.hamburger');
+      const before = window.getComputedStyle(hamburger, '::before');
+      const after = window.getComputedStyle(hamburger, '::after');
+      
+      if (mainNav.classList.contains('active')) {
+        hamburger.style.background = 'transparent';
+        hamburger.style.transform = 'rotate(45deg)';
+        hamburger.style.setProperty('--before-transform', 'rotate(90deg) translateY(-6px)');
+        hamburger.style.setProperty('--after-transform', 'rotate(90deg) translateY(6px)');
+      } else {
+        hamburger.style.background = 'var(--text)';
+        hamburger.style.transform = 'rotate(0deg)';
+        hamburger.style.setProperty('--before-transform', 'rotate(0deg) translateY(-6px)');
+        hamburger.style.setProperty('--after-transform', 'rotate(0deg) translateY(6px)');
+      }
+    }
+    
+    function handleScroll() {
+      const scrolled = window.pageYOffset > 50;
+      header.classList.toggle('scrolled', scrolled);
+      
+      // Update progress bar
+      const scrollTop = window.pageYOffset;
+      const windowHeight = window.innerHeight;
+      const docHeight = document.documentElement.scrollHeight - windowHeight;
+      const scrollPercent = Math.min((scrollTop / docHeight) * 100, 100);
+      navProgress.style.width = scrollPercent + '%';
+    }
+    
+    function updateScrollSpy() {
+      const sections = document.querySelectorAll('section[id]');
+      const scrollPosition = window.pageYOffset + header.offsetHeight + 50;
+      
+      let currentSection = '';
+      
+      sections.forEach(section => {
+        const sectionTop = section.offsetTop;
+        const sectionHeight = section.offsetHeight;
+        
+        if (scrollPosition >= sectionTop && scrollPosition < sectionTop + sectionHeight) {
+          currentSection = section.getAttribute('id');
+        }
+      });
+      
+      if (currentSection) {
+        updateActiveNavLink(currentSection);
+      }
+    }
+    
+    function updateActiveNavLink(activeId) {
+      // Update main navigation
+      document.querySelectorAll('.nav-link').forEach(link => {
+        link.classList.remove('active');
+        if (link.getAttribute('href') === '#' + activeId) {
+          link.classList.add('active');
+        }
+      });
+      
+      // Update menubar navigation
+      document.querySelectorAll('.menubar-link').forEach(link => {
+        link.classList.remove('active');
+        if (link.getAttribute('href') === '#' + activeId) {
+          link.classList.add('active');
+        }
+      });
+    }
+
+    // Menubar functions
+    function setupMenubar() {
+      // Toggle menubar
+      menubarToggle.addEventListener('click', toggleMenubar);
+      menubarClose.addEventListener('click', closeMenubar);
+      menubarOverlay.addEventListener('click', closeMenubar);
+      
+      // Close menubar when clicking on links
+      document.querySelectorAll('.menubar-link').forEach(link => {
+        link.addEventListener('click', (e) => {
+          if (link.getAttribute('href').startsWith('#')) {
+            e.preventDefault();
+            const targetId = link.getAttribute('href').substring(1);
+            const targetSection = document.getElementById(targetId);
+            
+            if (targetSection) {
+              const headerHeight = header.offsetHeight;
+              const targetPosition = targetSection.offsetTop - headerHeight - 20;
+              
+              window.scrollTo({
+                top: targetPosition,
+                behavior: 'smooth'
+              });
+              
+              closeMenubar();
+              updateActiveNavLink(targetId);
+            }
+          }
+        });
+      });
+      
+      // Close menubar on escape key
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && menubar.classList.contains('active')) {
+          closeMenubar();
+        }
+      });
+    }
+    
+    function toggleMenubar() {
+      menubar.classList.toggle('active');
+      menubarOverlay.classList.toggle('active');
+      document.body.style.overflow = menubar.classList.contains('active') ? 'hidden' : '';
+    }
+    
+    function closeMenubar() {
+      menubar.classList.remove('active');
+      menubarOverlay.classList.remove('active');
+      document.body.style.overflow = '';
+    }
+    
+    function updateMenubarUser() {
+      if (currentUser) {
+        menubarUserName.textContent = currentUser.name;
+        userInitial.textContent = currentUser.name.charAt(0).toUpperCase();
+      } else {
+        menubarUserName.textContent = 'Guest';
+        userInitial.textContent = 'G';
+      }
+    }
+    
+    function showSettings() {
+      alert('Settings panel coming soon!');
+    }
+
+    function updateUserStatus() {
+      if (currentUser) {
+        currentUserName.textContent = currentUser.name;
+        userStatus.classList.add('online');
+        userStatus.classList.remove('offline');
+      } else {
+        currentUserName.textContent = 'Guest';
+        userStatus.classList.add('offline');
+        userStatus.classList.remove('online');
+      }
+      updateMenubarUser();
+    }
+
+    function init() {
+      const storedUser = localStorage.getItem('oceaneeye_session');
+      if (storedUser) {
+        currentUser = JSON.parse(storedUser);
+        showAlertBanner('Welcome back, ' + currentUser.name + '!', 'success');
+      }
+      
+      updateUserStatus();
+      
+      // Load stored data
+      loadStoredData();
+      
+      setupCharts();
+      setup3DOcean();
+      setupMap();
+      setupNavigation();
+      setupMenubar();
+      bindEvents();
+      updateTrackingDisplay();
+      startDashboardUpdates();
+      startChartUpdates();
+      startEnvironmentalMonitoring();
+      startAlertSystem();
+    }
+
+    function bindEvents() {
+      signInBtn.addEventListener('click', () => openAuth(true));
+      signUpBtn.addEventListener('click', () => openAuth(false));
+      heroStartBtn.addEventListener('click', () => openAuth(false));
+      heroLearnBtn.addEventListener('click', () => document.getElementById('ingestion').scrollIntoView({ behavior: 'smooth' }));
+      modalClose.addEventListener('click', closeAuth);
+      authModeBtn.addEventListener('click', toggleAuthMode);
+      authForm.addEventListener('submit', submitAuth);
+      uploadBox.addEventListener('click', () => imageInput.click());
+      uploadBox.addEventListener('dragover', (event) => {
+        event.preventDefault();
+        uploadBox.classList.add('dragging');
+      });
+      uploadBox.addEventListener('dragleave', () => uploadBox.classList.remove('dragging'));
+      uploadBox.addEventListener('drop', (event) => {
+        event.preventDefault();
+        uploadBox.classList.remove('dragging');
+        const files = event.dataTransfer.files;
+        if (files.length) {
+          imageInput.files = files;
+          handleFile();
+        }
+      });
+      imageInput.addEventListener('change', handleFile);
+      detectBtn.addEventListener('click', runDetection);
+      clearBtn.addEventListener('click', resetDetection);
+      forecastBtn.addEventListener('click', refreshForecast);
+      trackBtn.addEventListener('click', toggleTracking);
+      window.addEventListener('click', (event) => {
+        if (event.target === authModal) closeAuth();
+      });
+    }
+
+    function openAuth(signIn = true) {
+      isSignIn = signIn;
+      authTitle.textContent = signIn ? 'Sign In' : 'Create account';
+      authSubmit.textContent = signIn ? 'Sign In' : 'Sign Up';
+      authModeBtn.textContent = signIn ? 'Create account' : 'Sign in to existing account';
+      authModeText.textContent = signIn ? 'New to OceanEye?' : 'Already have an account?';
+      nameGroup.style.display = signIn ? 'none' : 'block';
+      authModal.classList.add('active');
+      authAlert.classList.remove('active');
+      authForm.reset();
+    }
+
+    function closeAuth() {
+      authModal.classList.remove('active');
+    }
+
+    function toggleAuthMode() {
+      openAuth(!isSignIn);
+    }
+
+    function submitAuth(event) {
+      event.preventDefault();
+      const email = authEmail.value.trim().toLowerCase();
+      const password = authPassword.value.trim();
+      const name = authName.value.trim();
+
+      if (!email || !password || (!isSignIn && !name)) {
+        showAlertBanner('Please complete all fields.', 'error');
+        return;
+      }
+
+      if (isSignIn) {
+        const stored = localStorage.getItem('oceaneeye_user_' + email);
+        if (!stored) {
+          showAlertBanner('No account found. Please sign up.', 'error');
+          return;
+        }
+        const user = JSON.parse(stored);
+        if (user.password !== password) {
+          showAlertBanner('Incorrect password.', 'error');
+          return;
+        }
+        currentUser = user;
+        localStorage.setItem('oceaneeye_session', JSON.stringify(user));
+        showAlertBanner('Welcome back, ' + user.name + '!', 'success');
+        updateUserStatus();
+        closeAuth();
+      } else {
+        const existing = localStorage.getItem('oceaneeye_user_' + email);
+        if (existing) {
+          showAlertBanner('Email already registered.', 'error');
+          return;
+        }
+        const user = { name, email, password, analyses: [] };
+        localStorage.setItem('oceaneeye_user_' + email, JSON.stringify(user));
+        localStorage.setItem('oceaneeye_session', JSON.stringify(user));
+        currentUser = user;
+        showAlertBanner('Account created. Welcome, ' + name + '!', 'success');
+        updateUserStatus();
+        closeAuth();
+      }
+    }
+
+    function showAlertBanner(message, type) {
+      authAlert.textContent = message;
+      authAlert.className = 'alert-banner active ' + (type === 'success' ? 'alert-success' : 'alert-error');
+      window.setTimeout(() => authAlert.classList.remove('active'), 4500);
+    }
+
+    function handleFile() {
+      const file = imageInput.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        previewImage.src = evt.target.result;
+        previewImage.style.display = 'block';
+        detectionPrompt.style.display = 'none';
+        detectBtn.disabled = false;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function runDetection() {
+      if (!imageInput.files.length) return;
+      detectBtn.textContent = 'Analyzing...';
+      detectBtn.disabled = true;
+      
+      // Add loading spinner
+      const spinner = document.createElement('div');
+      spinner.className = 'loading-spinner';
+      detectBtn.appendChild(spinner);
+      
+      analysisStartTime = new Date();
+      showAlertBanner('AI analysis sequence started.', 'success');
+
+      // Simulate more realistic processing steps
+      const steps = ['Preprocessing image...', 'Running AI model...', 'Analyzing spectral data...', 'Detecting objects...', 'Calculating confidence...'];
+      let stepIndex = 0;
+      
+      const stepInterval = setInterval(() => {
+        if (stepIndex < steps.length) {
+          showAlertBanner(steps[stepIndex], 'success');
+          stepIndex++;
+        } else {
+          clearInterval(stepInterval);
+          
+          const confidence = (Math.random() * 0.32 + 0.68).toFixed(2);
+          const detected = Math.random() > 0.25;
+          const typeOptions = ['PET bottle', 'Fishing net', 'Plastic film', 'Foam fragment', 'PVC pipe', 'HDPE canister', 'Styrofoam piece', 'Plastic bag'];
+          const analysisEndTime = new Date();
+          const durationMs = analysisEndTime - analysisStartTime;
+
+          currentAnalysis = {
+            detected,
+            confidence: Number(confidence),
+            type: detected ? typeOptions[Math.floor(Math.random() * typeOptions.length)] : 'None',
+            area: detected ? Math.floor(Math.random() * 2000 + 180) + ' cm²' : '0 cm²',
+            timestamp: analysisEndTime.toISOString(),
+            durationMs,
+            location: detected ? getRandomLocation() : null,
+            severity: detected ? getSeverityLevel(Number(confidence)) : 'none'
+          };
+          
+          displaySummary(currentAnalysis);
+          saveHistory(currentAnalysis);
+          
+          // Update dashboard if detection successful
+          if (detected) {
+            updateDashboardAfterDetection(currentAnalysis);
+          }
+          
+          detectBtn.textContent = 'Run Detection';
+          detectBtn.disabled = false;
+          if (spinner.parentNode) {
+            spinner.parentNode.removeChild(spinner);
+          }
+        }
+      }, 800);
+    }
+
+    function getRandomLocation() {
+      const locations = ['Mumbai Coast', 'Goa Beach', 'Chennai Harbor', 'Kolkata River', 'Kerala Backwaters', 'Andaman Islands'];
+      return locations[Math.floor(Math.random() * locations.length)];
+    }
+
+    function getSeverityLevel(confidence) {
+      if (confidence > 0.9) return 'high';
+      if (confidence > 0.75) return 'medium';
+      return 'low';
+    }
+
+    function updateDashboardAfterDetection(analysis) {
+      // Create a new mission from the detection
+      const newMission = {
+        id: 'OE-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 1000)).padStart(3, '0'),
+        location: analysis.location,
+        status: 'active',
+        plasticDetected: parseFloat(analysis.area.split(' ')[0]),
+        timestamp: new Date().toISOString(),
+        responseTime: 'Analyzing...'
+      };
+      
+      missionData.unshift(newMission);
+      missionData = missionData.slice(0, 50);
+      localStorage.setItem('oceaneeye_missions', JSON.stringify(missionData));
+      
+      // Update dashboard immediately
+      updateDashboard();
+      
+      // Simulate mission completion after some time
+      setTimeout(() => {
+        newMission.status = 'completed';
+        newMission.responseTime = (Math.random() * 4 + 2).toFixed(1) + 'h';
+        localStorage.setItem('oceaneeye_missions', JSON.stringify(missionData));
+        updateDashboard();
+      }, Math.random() * 300000 + 60000); // Complete between 1-6 minutes
+    }
+
+    function displaySummary(analysis) {
+      const analysisTime = new Date(analysis.timestamp).toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+      });
+      const durationSeconds = Math.round(analysis.durationMs / 1000);
+      summaryDetected.textContent = analysis.detected ? 'Yes' : 'No';
+      summaryType.textContent = analysis.detected ? analysis.type : 'N/A';
+      summaryArea.textContent = analysis.detected ? analysis.area : 'N/A';
+      summaryTimestamp.textContent = analysisTime + ' IST';
+      summaryDuration.textContent = durationSeconds + ' sec';
+      summaryConfidence.textContent = (analysis.confidence * 100).toFixed(1) + '%';
+      summaryDetected.className = 'result-value ' + (analysis.detected ? 'status-success' : 'status-danger');
+      
+      // Add location and severity if detected
+      if (analysis.detected) {
+        const locationRow = document.createElement('div');
+        locationRow.className = 'result-row';
+        locationRow.innerHTML = `<span>Location</span><span>${analysis.location}</span>`;
+        document.getElementById('detectionSummary').appendChild(locationRow);
+        
+        const severityRow = document.createElement('div');
+        severityRow.className = 'result-row';
+        severityRow.innerHTML = `<span>Severity</span><span class="status-pill status-${analysis.severity === 'high' ? 'danger' : analysis.severity === 'medium' ? 'warning' : 'success'}">${analysis.severity}</span>`;
+        document.getElementById('detectionSummary').appendChild(severityRow);
+      }
+    }
+
+    function resetDetection() {
+      imageInput.value = '';
+      previewImage.src = '';
+      previewImage.style.display = 'none';
+      detectionPrompt.style.display = 'block';
+      detectBtn.disabled = true;
+      summaryDetected.textContent = '—';
+      summaryConfidence.textContent = '—';
+      summaryType.textContent = '—';
+      summaryArea.textContent = '—';
+      summaryTimestamp.textContent = '—';
+      summaryDuration.textContent = '—';
+      
+      // Clear additional rows
+      const summaryDiv = document.getElementById('detectionSummary');
+      const extraRows = summaryDiv.querySelectorAll('.result-row:not(:first-child):not(:nth-child(2)):not(:nth-child(3)):not(:nth-child(4)):not(:nth-child(5)):not(:nth-child(6))');
+      extraRows.forEach(row => row.remove());
+    }
+
+    function saveHistory(analysis) {
+      if (!currentUser) return;
+      const history = currentUser.analyses || [];
+      history.unshift(analysis);
+      currentUser.analyses = history.slice(0, 10);
+      localStorage.setItem('oceaneeye_user_' + currentUser.email, JSON.stringify(currentUser));
+      localStorage.setItem('oceaneeye_session', JSON.stringify(currentUser));
+      renderHistory();
+    }
+
+    function renderHistory() {
+      const historySection = document.querySelector('.history-list');
+      if (!historySection) return;
+      const analyses = currentUser?.analyses || [];
+      if (!analyses.length) {
+        historySection.innerHTML = '<p style="color: var(--muted); margin:0;">No mission history yet.</p>';
+        return;
+      }
+      historySection.innerHTML = analyses.map(item => {
+        return `
+          <div class="history-card">
+            <h4>${new Date(item.timestamp).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })} IST</h4>
+            <p>Detected: ${item.detected ? 'Yes' : 'No'}</p>
+            <p>Confidence: ${(item.confidence * 100).toFixed(1)}%</p>
+            <p>Type: ${item.detected ? item.type : 'None'}</p>
+            <p>Area: ${item.area}</p>
+            <p>Duration: ${(item.durationMs / 1000).toFixed(1)} sec</p>
+          </div>`;
+      }).join('');
+    }
+
+    function setupCharts() {
+      const trendCtx = document.getElementById('trendChart').getContext('2d');
+      window.trendChart = new Chart(trendCtx, {
+        type: 'line',
+        data: {
+          labels: ['6h ago', '5h ago', '4h ago', '3h ago', '2h ago', '1h ago', 'Now'],
+          datasets: [{
+            label: 'Plastic detections',
+            data: [12, 18, 15, 24, 21, 26, 31],
+            borderColor: 'rgba(56, 189, 248, 0.95)',
+            backgroundColor: 'rgba(56, 189, 248, 0.16)',
+            fill: true,
+            tension: 0.35,
+            pointRadius: 4,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { display: false }, ticks: { color: '#94a3b8' } },
+            y: { grid: { color: 'rgba(255,255,255,0.08)' }, ticks: { color: '#94a3b8' } }
+          }
+        }
+      });
+
+      const distributionCtx = document.getElementById('distributionChart').getContext('2d');
+      window.distributionChart = new Chart(distributionCtx, {
+        type: 'doughnut',
+        data: {
+          labels: ['Bottles', 'Nets', 'Film', 'Other'],
+          datasets: [{
+            data: [42, 26, 18, 14],
+            backgroundColor: ['#38bdf8', '#22c55e', '#fbbf24', '#f97316'],
+            borderWidth: 0,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8' } } }
+        }
+      });
+
+      const regionCtx = document.getElementById('regionChart').getContext('2d');
+      window.regionChart = new Chart(regionCtx, {
+        type: 'bar',
+        data: {
+          labels: ['Mumbai', 'Goa', 'Chennai', 'Kolkata'],
+          datasets: [{
+            label: 'Risk score',
+            data: [85, 74, 92, 68],
+            backgroundColor: 'rgba(255,255,255,0.15)',
+            borderColor: 'rgba(56, 189, 248, 0.95)',
+            borderWidth: 2,
+            borderRadius: 12,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { display: false }, ticks: { color: '#94a3b8' } },
+            y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.08)' }, ticks: { color: '#94a3b8' } }
+          }
+        }
+      });
+    }
+
+    function setupMap() {
+      map = L.map('map').setView([20.5937, 78.9629], 5); // Center on India
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+      }).addTo(map);
+
+      // Add initial pollution hotspots
+      const hotspots = [
+        { lat: 19.0760, lng: 72.8777, name: 'Mumbai Hotspot', severity: 'high' },
+        { lat: 15.2993, lng: 74.1240, name: 'Goa Drift Path', severity: 'medium' },
+        { lat: 13.0827, lng: 80.2707, name: 'Chennai Sector', severity: 'high' },
+        { lat: 22.5726, lng: 88.3639, name: 'Kolkata Area', severity: 'low' }
+      ];
+
+      hotspots.forEach((hotspot, index) => {
+        const color = hotspot.severity === 'high' ? '#f97316' : hotspot.severity === 'medium' ? '#fbbf24' : '#22c55e';
+        
+        // Create custom animated marker
+        const markerHtml = `
+          <div class="custom-marker" style="
+            background: ${color};
+            width: ${hotspot.severity === 'high' ? '16px' : hotspot.severity === 'medium' ? '14px' : '12px'};
+            height: ${hotspot.severity === 'high' ? '16px' : hotspot.severity === 'medium' ? '14px' : '12px'};
+            border-radius: 50%;
+            border: 2px solid rgba(255,255,255,0.8);
+            box-shadow: 0 0 10px ${color}80;
+            animation: markerPulse 2s ease-in-out infinite;
+            animation-delay: ${index * 0.3}s;
+          "></div>
+        `;
+        
+        const customIcon = L.divIcon({
+          html: markerHtml,
+          className: 'custom-div-icon',
+          iconSize: [20, 20],
+          iconAnchor: [10, 10]
+        });
+        
+        const marker = L.marker([hotspot.lat, hotspot.lng], { icon: customIcon }).addTo(map);
+        marker.bindPopup(`<b>${hotspot.name}</b><br>Severity: ${hotspot.severity}`);
+        markers.push(marker);
+      });
+
+      // Add a tracking path
+      const pathCoords = [
+        [19.0760, 72.8777],
+        [18.5, 73.5],
+        [17.5, 74.0],
+        [16.5, 74.5],
+        [15.2993, 74.1240]
+      ];
+      
+      L.polyline(pathCoords, {
+        color: '#38bdf8',
+        weight: 3,
+        opacity: 0.7,
+        dashArray: '10, 10'
+      }).addTo(map);
+    }
+
+    function setup3DOcean() {
+      const container = document.getElementById('oceanCanvas');
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setSize(container.clientWidth, container.clientHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      container.appendChild(renderer.domElement);
+
+      const geometry = new THREE.PlaneGeometry(14, 10, 64, 64);
+      const material = new THREE.MeshStandardMaterial({
+        color: 0x1f3a74,
+        metalness: 0.1,
+        roughness: 0.45,
+        transparent: true,
+        opacity: 0.95,
+        side: THREE.DoubleSide
+      });
+      const ocean = new THREE.Mesh(geometry, material);
+      ocean.rotation.x = -Math.PI / 2;
+      scene.add(ocean);
+
+      const light = new THREE.DirectionalLight(0xc3f0ff, 1.2);
+      light.position.set(5, 10, 7);
+      scene.add(light);
+
+      const ambient = new THREE.AmbientLight(0x8bb7ff, 0.25);
+      scene.add(ambient);
+
+      camera.position.set(0, 5, 10);
+      camera.lookAt(0, 0, 0);
+
+      function animate() {
+        requestAnimationFrame(animate);
+        const time = performance.now() * 0.001;
+        const positions = geometry.attributes.position;
+        for (let i = 0; i < positions.count; i++) {
+          const x = positions.getX(i);
+          const y = positions.getY(i);
+          positions.setZ(i, Math.sin(x * 1.2 + time) * 0.15 + Math.cos(y * 1.6 + time * 1.1) * 0.12);
+        }
+        positions.needsUpdate = true;
+        ocean.rotation.z += 0.0008;
+        ocean.position.y = Math.sin(time * 0.5) * 0.1;
+        camera.position.y = 5 + Math.sin(time * 0.3) * 0.5;
+        camera.lookAt(0, Math.sin(time * 0.2) * 0.2, 0);
+        renderer.render(scene, camera);
+      }
+      animate();
+
+      window.addEventListener('resize', () => {
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        camera.aspect = container.clientWidth / container.clientHeight;
+        camera.updateProjectionMatrix();
+      });
+    }
+
+    function refreshForecast() {
+      forecastBtn.textContent = 'Refreshing';
+      forecastBtn.disabled = true;
+      window.setTimeout(() => {
+        const directions = ['Northwest', 'Southwest', 'Northeast', 'Southeast'];
+        const zones = ['Goa Coast', 'Lakshadweep', 'Andaman Islands', 'Kerala Coast'];
+        const speeds = ['1.2', '1.8', '2.1', '1.5'];
+        const probs = ['65%', '78%', '82%', '71%'];
+        
+        const randomIndex = Math.floor(Math.random() * directions.length);
+        
+        currentDrift.textContent = directions[randomIndex];
+        predictedArrival.textContent = `${Math.floor(Math.random() * 8 + 12)}–${Math.floor(Math.random() * 8 + 18)}h`;
+        impactZone.textContent = zones[randomIndex];
+        transportSpeed.textContent = speeds[randomIndex] + ' kn';
+        spreadProb.textContent = probs[randomIndex];
+        
+        // Update map markers with new data
+        updateMapHotspots();
+        
+        showAlertBanner('Trajectory forecast refreshed.', 'success');
+        forecastBtn.textContent = 'Refresh Prediction';
+        forecastBtn.disabled = false;
+      }, 1600);
+    }
+
+    function toggleTracking() {
+      if (trackingActive) {
+        stopTracking();
+      } else {
+        startTracking();
+      }
+    }
+
+    function startTracking() {
+      trackingActive = true;
+      trackBtn.textContent = 'Stop Tracking';
+      trackBtn.classList.add('btn-secondary');
+      trackBtn.classList.remove('btn-primary');
+      
+      trackingId.textContent = 'OE-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 1000)).padStart(3, '0');
+      activeTrackers.textContent = Math.floor(Math.random() * 5 + 8);
+      
+      trackingInterval = setInterval(() => {
+        updateTrackingDisplay();
+        updateMapHotspots();
+      }, 30000); // Update every 30 seconds
+      
+      showAlertBanner('Real-time tracking activated.', 'success');
+    }
+
+    function stopTracking() {
+      trackingActive = false;
+      trackBtn.textContent = 'Start Tracking';
+      trackBtn.classList.add('btn-primary');
+      trackBtn.classList.remove('btn-secondary');
+      
+      if (trackingInterval) {
+        clearInterval(trackingInterval);
+        trackingInterval = null;
+      }
+      
+      showAlertBanner('Tracking stopped.', 'success');
+    }
+
+    function updateTrackingDisplay() {
+      if (!trackingActive) return;
+      
+      lastUpdate.textContent = 'Just now';
+      setTimeout(() => {
+        lastUpdate.textContent = '1 min ago';
+      }, 60000);
+      
+      // Simulate changing alert levels
+      const levels = ['Low', 'Medium', 'High'];
+      const colors = ['status-success', 'status-warning', 'status-danger'];
+      const randomLevel = Math.floor(Math.random() * levels.length);
+      alertLevel.textContent = levels[randomLevel];
+      alertLevel.className = 'status-pill ' + colors[randomLevel];
+    }
+
+    function updateMapHotspots() {
+      // Simulate moving hotspots slightly
+      markers.forEach(marker => {
+        const currentLatLng = marker.getLatLng();
+        const newLat = currentLatLng.lat + (Math.random() - 0.5) * 0.01;
+        const newLng = currentLatLng.lng + (Math.random() - 0.5) * 0.01;
+        marker.setLatLng([newLat, newLng]);
+      });
+    }
+
+    function startDashboardUpdates() {
+      updateDashboard();
+      updateDataPointsCount();
+      dashboardInterval = setInterval(() => {
+        updateDashboard();
+        updateDataPointsCount();
+        document.getElementById('lastUpdateTime').textContent = new Date().toLocaleTimeString();
+      }, 30000); // Update every 30 seconds
+    }
+
+    function loadStoredData() {
+      const storedMissions = localStorage.getItem('oceaneeye_missions');
+      if (storedMissions) {
+        missionData = JSON.parse(storedMissions);
+      } else {
+        // Initialize with sample data
+        missionData = [
+          {
+            id: 'OE-2024-001',
+            location: 'Mumbai Coast',
+            status: 'completed',
+            plasticDetected: 2.1,
+            timestamp: new Date(Date.now() - 86400000).toISOString(),
+            responseTime: '4.5h'
+          },
+          {
+            id: 'OE-2024-002',
+            location: 'Goa Beach',
+            status: 'active',
+            plasticDetected: 1.8,
+            timestamp: new Date(Date.now() - 3600000).toISOString(),
+            responseTime: '2.1h'
+          }
+        ];
+        localStorage.setItem('oceaneeye_missions', JSON.stringify(missionData));
+      }
+    }
+
+    function startEnvironmentalMonitoring() {
+      setInterval(() => {
+        // Simulate environmental data changes
+        environmentalData.temperature += (Math.random() - 0.5) * 0.5;
+        environmentalData.temperature = Math.max(25, Math.min(35, environmentalData.temperature));
+        
+        environmentalData.salinity += (Math.random() - 0.5) * 0.2;
+        environmentalData.salinity = Math.max(30, Math.min(40, environmentalData.salinity));
+        
+        environmentalData.turbidity += (Math.random() - 0.5) * 0.3;
+        environmentalData.turbidity = Math.max(0.5, Math.min(5, environmentalData.turbidity));
+        
+        environmentalData.ph += (Math.random() - 0.5) * 0.1;
+        environmentalData.ph = Math.max(7.5, Math.min(8.5, environmentalData.ph));
+        
+        environmentalData.oxygen += (Math.random() - 0.5) * 0.2;
+        environmentalData.oxygen = Math.max(4, Math.min(9, environmentalData.oxygen));
+        
+        updateEnvironmentalDisplay();
+        updateSystemStatus();
+      }, 10000); // Update every 10 seconds
+    }
+
+    function updateSystemStatus() {
+      // Simulate occasional system status changes
+      const statuses = ['Online', 'Online', 'Online', 'Degraded', 'Maintenance'];
+      const networks = ['Stable', 'Stable', 'Stable', 'Unstable'];
+      
+      if (Math.random() > 0.95) {
+        const aiStatus = document.querySelector('#aiStatus');
+        const networkStatus = document.querySelector('#networkStatus');
+        
+        if (aiStatus) aiStatus.textContent = statuses[Math.floor(Math.random() * statuses.length)];
+        if (networkStatus) networkStatus.textContent = networks[Math.floor(Math.random() * networks.length)];
+        
+        // Update status pill colors
+        const statusElements = document.querySelectorAll('.status-pill');
+        statusElements.forEach(element => {
+          if (element.textContent === 'Online' || element.textContent === 'Stable') {
+            element.className = 'status-pill status-success';
+          } else if (element.textContent === 'Degraded' || element.textContent === 'Unstable') {
+            element.className = 'status-pill status-warning';
+          } else {
+            element.className = 'status-pill status-danger';
+          }
+        });
+      }
+    }
+
+    function updateEnvironmentalDisplay() {
+      // Update environmental data in the UI if elements exist
+      const tempElement = document.getElementById('envTemp');
+      const salinityElement = document.getElementById('envSalinity');
+      const turbidityElement = document.getElementById('envTurbidity');
+      
+      if (tempElement) tempElement.textContent = environmentalData.temperature.toFixed(1) + '°C';
+      if (salinityElement) salinityElement.textContent = environmentalData.salinity.toFixed(1) + ' PSU';
+      if (turbidityElement) turbidityElement.textContent = environmentalData.turbidity.toFixed(1) + ' NTU';
+    }
+
+    function startAlertSystem() {
+      alertInterval = setInterval(() => {
+        // Generate random alerts based on environmental conditions
+        if (environmentalData.temperature > 32 && Math.random() > 0.8) {
+          createAlert('High temperature detected', 'warning', 'Environmental monitoring');
+        }
+        if (environmentalData.turbidity > 3.5 && Math.random() > 0.85) {
+          createAlert('High turbidity levels', 'danger', 'Water quality');
+        }
+        if (missionData.some(m => m.status === 'active' && Date.now() - new Date(m.timestamp) > 7200000) && Math.random() > 0.9) {
+          createAlert('Mission response time exceeded', 'warning', 'Mission management');
+        }
+      }, 30000); // Check every 30 seconds
+    }
+
+    function createAlert(message, type, category) {
+      const alert = {
+        id: Date.now(),
+        message,
+        type,
+        category,
+        timestamp: new Date().toISOString(),
+        acknowledged: false
+      };
+      
+      activeAlerts.unshift(alert);
+      activeAlerts = activeAlerts.slice(0, 10); // Keep only last 10 alerts
+      
+      updateAlertDisplay();
+      showAlertBanner(message, type);
+      
+      // Visual notification - flash the alert indicator
+      const alertIndicator = document.querySelector('.alert-indicator');
+      if (alertIndicator) {
+        alertIndicator.style.animation = 'none';
+        setTimeout(() => {
+          alertIndicator.style.animation = 'alertBlink 1.5s ease-in-out infinite';
+        }, 10);
+      }
+    }
+
+    function updateAlertDisplay() {
+      const alertContainer = document.getElementById('alertContainer');
+      if (!alertContainer) return;
+      
+      alertContainer.innerHTML = activeAlerts.map(alert => `
+        <div class="alert-item ${alert.type}" onclick="acknowledgeAlert(${alert.id})">
+          <div class="alert-header">
+            <span class="alert-category">${alert.category}</span>
+            <span class="alert-time">${new Date(alert.timestamp).toLocaleTimeString()}</span>
+          </div>
+          <div class="alert-message">${alert.message}</div>
+          ${!alert.acknowledged ? '<div class="alert-indicator"></div>' : ''}
+        </div>
+      `).join('');
+    }
+
+    function acknowledgeAlert(alertId) {
+      const alert = activeAlerts.find(a => a.id === alertId);
+      if (alert) {
+        alert.acknowledged = true;
+        updateAlertDisplay();
+      }
+    }
+
+    function startChartUpdates() {
+      chartUpdateInterval = setInterval(() => {
+        updateLiveCharts();
+      }, 15000); // Update charts every 15 seconds
+    }
+
+    function updateLiveCharts() {
+      // Update trend chart with new data point
+      if (window.trendChart) {
+        const newData = Math.floor(Math.random() * 20 + 10);
+        window.trendChart.data.datasets[0].data.shift();
+        window.trendChart.data.datasets[0].data.push(newData);
+        window.trendChart.update('none');
+      }
+      
+      // Update distribution chart occasionally
+      if (Math.random() > 0.7 && window.distributionChart) {
+        const newData = [
+          Math.floor(Math.random() * 20 + 30),
+          Math.floor(Math.random() * 15 + 20),
+          Math.floor(Math.random() * 10 + 10),
+          Math.floor(Math.random() * 8 + 5)
+        ];
+        window.distributionChart.data.datasets[0].data = newData;
+        window.distributionChart.update('none');
+      }
+    }
+
+    function updateDashboard() {
+      // Update mission statistics
+      const activeMissionsCount = missionData.filter(m => m.status === 'active').length;
+      const completedTodayCount = missionData.filter(m => {
+        const missionDate = new Date(m.timestamp);
+        const today = new Date();
+        return m.status === 'completed' && 
+               missionDate.toDateString() === today.toDateString();
+      }).length;
+
+      document.getElementById('totalMissions').textContent = missionData.length;
+      document.getElementById('activeMissions').textContent = activeMissionsCount;
+      document.getElementById('completedToday').textContent = completedTodayCount;
+      document.getElementById('successRate').textContent = 
+        missionData.length > 0 ? 
+        ((missionData.filter(m => m.status === 'completed').length / missionData.length) * 100).toFixed(1) + '%' : 
+        '0%';
+
+      // Update progress bar based on active missions
+      const progress = activeMissionsCount > 0 ? Math.min(90, (completedTodayCount / (activeMissionsCount + completedTodayCount)) * 100) : 75;
+      document.getElementById('missionProgress').style.width = progress + '%';
+
+      // Update environmental impact metrics
+      const totalPlastic = missionData.reduce((sum, m) => sum + (m.plasticDetected || 0), 0);
+      const uniqueLocations = [...new Set(missionData.map(m => m.location))].length;
+      
+      document.getElementById('plasticRemoved').textContent = totalPlastic.toFixed(1) + ' kg';
+      document.getElementById('areaCleaned').textContent = (uniqueLocations * 25 + Math.random() * 10).toFixed(0) + ' km²';
+      document.getElementById('marineLife').textContent = Math.min(95, 85 + Math.random() * 10).toFixed(0) + '%';
+
+      // Occasionally add new missions
+      if (Math.random() > 0.85) {
+        addRandomMission();
+      }
+
+      // Update mission history display
+      updateMissionHistory();
+    }
+
+    function addRandomMission() {
+      const locations = ['Mumbai Coast', 'Goa Beach', 'Chennai Harbor', 'Kolkata River', 'Kerala Backwaters'];
+      const statuses = ['active', 'completed'];
+      
+      const newMission = {
+        id: 'OE-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 1000)).padStart(3, '0'),
+        location: locations[Math.floor(Math.random() * locations.length)],
+        status: statuses[Math.floor(Math.random() * statuses.length)],
+        plasticDetected: Math.random() * 3 + 0.5,
+        timestamp: new Date().toISOString(),
+        responseTime: (Math.random() * 6 + 1).toFixed(1) + 'h'
+      };
+      
+      missionData.unshift(newMission);
+      missionData = missionData.slice(0, 50); // Keep only last 50 missions
+      localStorage.setItem('oceaneeye_missions', JSON.stringify(missionData));
+    }
+
+    function exportData() {
+      const data = {
+        missions: missionData,
+        environmental: environmentalData,
+        alerts: activeAlerts,
+        exportTime: new Date().toISOString()
+      };
+      
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `oceaneeye-data-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      showAlertBanner('Data exported successfully', 'success');
+    }
+
+    function clearOldMissions() {
+      const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      missionData = missionData.filter(mission => 
+        mission.status === 'active' || new Date(mission.timestamp) > oneWeekAgo
+      );
+      localStorage.setItem('oceaneeye_missions', JSON.stringify(missionData));
+      updateDashboard();
+      showAlertBanner('Old completed missions cleared', 'success');
+    }
+
+    function refreshAllData() {
+      // Force refresh all data
+      updateDashboard();
+      updateLiveCharts();
+      updateAlertDisplay();
+      updateEnvironmentalDisplay();
+      document.getElementById('lastUpdateTime').textContent = 'Just now';
+      showAlertBanner('All data refreshed', 'success');
+    }
+
+    function updateDataPointsCount() {
+      const totalPoints = missionData.length + activeAlerts.length + Object.keys(environmentalData).length;
+      document.getElementById('dataPointsCount').textContent = totalPoints;
+    }
+
+    init();
+  </script>
+</body>
+</html>
